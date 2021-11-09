@@ -1,5 +1,5 @@
 # azscadeploy
-deploy an sca in azure with terraform and ansible
+##Deploy an sca in azure with terraform and ansible
 
 to deploy SCA, do the following.  It is convenient to use cloudshell bash for this:
 
@@ -53,6 +53,7 @@ azcopy cp "/var/log/scc_hana*.txz" "https://<storage-account-name>.blob.core.win
 ```
 
 The next step will be getting the supportconfig file to your SCA appliance.  If it's in your storage account, you can download it using azcopy - this will be the most efficient mechanism.  azcopy should be pre-installed on your SCA vm.  Alternatively, you can upload supportconfig files to your VM with
+
 ```bash
 scp <supportconfig file> -i pkey.out azureuser:<your ip address>:~/
 ```
@@ -65,7 +66,12 @@ scatool scc_<your file name>.txz
 
 This will output a HTML file that you will have to download or put into your storage account for viewing.
 
+## Development of new SCA patterns
+
+To start developing new patterns, you should fork the Azure SCA pattern repo (https://github.com/rsponholtz/azsapsca.git), and then clone your repo to your own SCA appliance.  Develop new pattern tests, commit to your repo, and then submit them as pull requests.
+
 There is a program for testing individual SCA patterns called "pat" which is located in /usr/bin/pat.  There is an error in this program though, so sudo to root, copy to your home directory and edit the script.  Find the section that looks like this:
+
 ```bash
 [[ ! -x $PATFULL ]] && { ((ERR_MODE++)); ((RET_FAT++)); }
 if grep
@@ -85,6 +91,7 @@ you can extract supportconfig files into the /var/log/archives directory, and th
 ```
 
 you should get an output that looks like this:
+
 ```
 ##########################################################################
 # PAT - SCA Pattern Tester v1.0.11
@@ -111,7 +118,13 @@ Pattern Tested:        /root/cli-ban.pl
 ##########################################################################
 ```
 
+When a pattern is complete you can put it in the library of patterns on your own SCA at /var/lib/sca/patterns/local, and you should submit the pattern as a pull request on this repo.
+
+## Pattern samples
+
 Let's look at the pattern checks you can create.  It is possible to write these patterns in perl, bash or python with the built-in libraries, and you could use anything else as long as you can parse the supportconfig files and create the correct output.  
+
+This is a pattern written in perl.  It checks whether there are any cli-ban or cli-prefer location constraints in the cluster configuration.
 
 ```perl
 #!/usr/bin/perl
@@ -174,4 +187,50 @@ SDP::Core::processOptions();
 SDP::Core::printPatternResults();
 
 exit;
+```
+
+Here is an example of another pattern in python.  This pattern simply checks whether tcp_timestamps is turned off (i.e. value zero):
+
+```python
+#!/usr/bin/python3
+
+# Title:       Check for tcp timestamp value
+# Description: make sure tcp timestamp value is correct
+# Modified:    2021 Nov 3
+#
+import os
+import Core
+
+META_CLASS = "AZSAP"
+META_CATEGORY = "Kernel"
+META_COMPONENT = "Network"
+PATTERN_ID = os.path.basename(__file__)
+PRIMARY_LINK = "META_LINK_TID"
+OVERALL = Core.WARN
+OVERALL_INFO = "NOT SET"
+OTHER_LINKS = "META_LINK_TID=https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/sap-hana-high-availability#manual-deployment"
+
+Core.init(META_CLASS, META_CATEGORY, META_COMPONENT, PATTERN_ID, PRIMARY_LINK, OVERALL, OVERALL_INFO, OTHER_LINKS)
+
+try:
+    fileOpen = "env.txt"
+    section = "/sbin/sysctl -a"
+    VALUE = -1
+    content = {}
+
+    if Core.getSection(fileOpen, section, content):
+        for line in content:
+            if "net.ipv4.tcp_timestamps" in content[line]:
+                RP_LIST = content[line].split('=')
+                VALUE = int(RP_LIST[1].strip())
+
+    if (VALUE == 0):
+        Core.updateStatus(Core.SUCC , "tcp_timestamps is correctly zero");
+    else:
+        Core.updateStatus(Core.CRIT, "tcp_timestamps should be zero");
+
+except Exception as error:
+        Core.updateStatus(Core.ERROR, "Outside the network scope: " + str(error))
+
+Core.printPatternResults()
 ```
