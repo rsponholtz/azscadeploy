@@ -4,11 +4,13 @@ terraform {
     azurerm = {
       source = "hashicorp/azurerm"
       version = "~>2.0"
+      disable_terraform_partner_id = false
     }
   }
 }
 provider "azurerm" {
   features {}
+  partner_id      = "fa9e3e10-7528-4589-9c7a-a9b1127598d2"
 }
 
 # Create a resource group if it doesn't exist
