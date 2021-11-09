@@ -4,9 +4,11 @@ deploy an sca in azure with terraform and ansible
 to deploy SCA, do the following.  It is convenient to use cloudshell bash for this:
 
 ```bash
-git clone <this repository>
+git clone https://github.com/rsponholtz/azscadeploy.Git
   
 #change directory to the repository dir
+cd azscadeploy
+
 #inspect the sca.tf file, updating as you see fit, particularly
 #the resource group name and the region to deploy in
 
@@ -17,21 +19,25 @@ terraform output -raw tls_private_key >pkey.out
 chmod 600 pkey.out
 
 #get the ip address of the created vm
-az vm show -d -g scaResourceGroup -n scaVM --query publicIps -o tsv
+az vm show -d -g scaResourceGroup -n scaVM --query publicIps -o tsv > scaIP.txt
+
+#set a bash variable with the IP address
+SCAIP=`cat scaIP.txt`
+
 #update inventory.ini with the IP address of the VM
 ansible-playbook -i ./inventory.ini  sca.yml
 ```
 
 to remove, do
 
-```
+```bash
 terraform destroy 
 ```
 
 to ssh to your VM, do
 
 ```bash
-ssh -i pkey.out azureuser@<your ip address>
+ssh -i pkey.out azureuser@$SCAIP
 ```
 
 you can generate a supportconfig file on your SUSE virtual machines by doing
@@ -46,7 +52,7 @@ This puts the supportconfig output file in /var/log/scc_<hostname>...txz.  You'l
 azcopy cp "/var/log/scc_hana*.txz" "https://<storage-account-name>.blob.core.windows.net/supportconfigs?sp=rfaeddl&st=2021-09-28T23:22:28Z&se=2022-09-19T07:22:28Z&spr=https&sv=2020-08-04&sr=c&sig=JEQF%2DIdp5Wz0DkbjQDJUv%2Bw6zzn%2HGFUEhhvxaHHGvP%2BM%3D"
 ```
 
-The next step will be getting the supportconfig file to your SCA appliance.  If it's in your storage account, you can download it using azcopy - this will be the most efficient mechanism.  Alternatively, you can upload supportconfig files to your VM with
+The next step will be getting the supportconfig file to your SCA appliance.  If it's in your storage account, you can download it using azcopy - this will be the most efficient mechanism.  azcopy should be pre-installed on your SCA vm.  Alternatively, you can upload supportconfig files to your VM with
 ```bash
 scp <supportconfig file> -i pkey.out azureuser:<your ip address>:~/
 ```
@@ -57,4 +63,115 @@ to run the supportconfig analyzer on your supportconfig file, do
 scatool scc_<your file name>.txz
 ```
 
-This 
+This will output a HTML file that you will have to download or put into your storage account for viewing.
+
+There is a program for testing individual SCA patterns called "pat" which is located in /usr/bin/pat.  There is an error in this program though, so sudo to root, copy to your home directory and edit the script.  Find the section that looks like this:
+```bash
+[[ ! -x $PATFULL ]] && { ((ERR_MODE++)); ((RET_FAT++)); }
+if grep
+ $PATFULL &>/dev/null
+then
+        ((RET_FAT++))
+        ((ERR_DOS++))
+fi
+```
+
+and comment out all of these lines with the ***#*** character.
+
+you can extract supportconfig files into the /var/log/archives directory, and then use the pat program to test a pattern test like this:
+
+```bash
+./pat cli-ban.pl
+```
+
+you should get an output that looks like this:
+```
+##########################################################################
+# PAT - SCA Pattern Tester v1.0.11
+##########################################################################
+Archive Directory:      /var/log/archives
+Pattern Directory:      /usr/lib/sca/patterns
+SCA Library Directory:  /usr/lib/sca
+Perl Libraries:         :/usr/lib/sca/perl/
+
+Running: /root/cli-ban.pl  -p /var/log/archives/scc_hana1_211108_2323
+META_CLASS=AZSAP|META_CATEGORY=Database|META_COMPONENT=Resource|PATTERN_ID=cli-ban.pl|PRIMARY_LINK=META_LINK_TID|OVERALL=0|OVERALL_INFO=No cli-ban or cli-prefer location constraints found |META_LINK_TID=https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse-pacemaker#cluster-installation
+Returns: 0, Overall: 0
+--------------------------------------------------------------------------
+
+
+##[ Summary ]#############################################################
+
+Archive Directory:     /var/log/archives
+SCA Library Directory: /usr/lib/sca
+Archive(s) Tested:     1
+Pattern Tested:        /root/cli-ban.pl
+  Fatal: 0, Err: 0, Ign: 0, Cri: 0, Wrn: 0, Pro: 0, Rec: 0, Good: 1
+
+##########################################################################
+```
+
+Let's look at the pattern checks you can create.  It is possible to write these patterns in perl, bash or python with the built-in libraries, and you could use anything else as long as you can parse the supportconfig files and create the correct output.  
+
+```perl
+#!/usr/bin/perl
+
+# Title:      CLI-ban check
+# Description: Checks cluster setup for any cli-ban or cli-prefer constraints
+# Modified:    2021 Oct 28
+
+use strict;
+use warnings;
+use SDP::Core;
+use SDP::SUSE;
+
+@PATTERN_RESULTS = (
+        PROPERTY_NAME_CLASS."=AZSAP",
+        PROPERTY_NAME_CATEGORY."=Database",
+        PROPERTY_NAME_COMPONENT."=Resource",
+        PROPERTY_NAME_PATTERN_ID."=$PATTERN_ID",
+        PROPERTY_NAME_PRIMARY_LINK."=META_LINK_TID",
+        PROPERTY_NAME_OVERALL."=$GSTATUS",
+        PROPERTY_NAME_OVERALL_INFO."=None",
+        "META_LINK_TID=https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/high-availability-guide-suse-pacemaker#cluster-installation"
+);
+
+
+sub checkCliBanConfiguration {
+        SDP::Core::printDebug('> checkCliBanConfiguration', 'BEGIN');
+        my $RCODE = 0;
+        my $FILE_OPEN = 'ha.txt';
+        my $SECTION = 'crm configure show';
+        my @CONTENT = ();
+        my $CONSTRAINT_COUNT = 0;
+
+        if ( SDP::Core::getSection($FILE_OPEN, $SECTION, \@CONTENT) ) {
+                foreach $_ (@CONTENT) {
+                        next if ( m/^\s*$/ ); # Skip blank lines
+                        if ( /cli-ban/i ) {
+                            SDP::Core::printDebug('cli-ban location constraint', "Found");
+                            $CONSTRAINT_COUNT++;
+                        } elsif  ( /cli-prefer/i ) {
+                            SDP::Core::printDebug('cli-prefer location constraint', "Found");
+                            $CONSTRAINT_COUNT++;
+                        }
+                }
+                if ( $CONSTRAINT_COUNT > 0 ) {
+                    SDP::Core::updateStatus(STATUS_WARNING, "Found: cli-ban or cli-prefer location constraints");
+                } else {
+                    SDP::Core::updateStatus(STATUS_SUCCESS, "No cli-ban or cli-prefer location constraints found ")
+                }
+
+        } else {
+                SDP::Core::updateStatus(STATUS_ERROR, "ERROR: checkCliBanConfiguration(): Cannot find \"$SECTION\" section in $FILE_OPEN");
+        }
+        SDP::Core::printDebug("< checkCliBanConfiguration", "Returns: $RCODE");
+        return $RCODE;
+}
+
+SDP::Core::processOptions();
+        checkCliBanConfiguration();
+SDP::Core::printPatternResults();
+
+exit;
+```

@@ -124,6 +124,6 @@
         dest: /usr/lib/sca/patterns/local
         owner: root
         group: root
-        mode: '0744'        
+        mode: '744'        
         remote_src: yes
         
