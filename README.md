@@ -5,33 +5,11 @@
 To deploy SCA, do the following.  It is convenient to use cloudshell bash for this:
 
 ```bash
-git clone https://github.com/rsponholtz/azscadeploy.Git
-  
-#change directory to the repository dir
+git clone https://github.com/rsponholtz/azscadeploy.git
 cd azscadeploy
-
-#inspect the sca.tf file, updating as you see fit, particularly
-#the resource group name and the region to deploy in
-
-terraform init
-terraform plan -out main.tfplan
-terraform apply "main.tfplan"
-terraform output -raw tls_private_key >pkey.out
-chmod 600 pkey.out
-
-#get the ip address of the created vm
-az vm show -d -g scaResourceGroup -n scaVM --query publicIps -o tsv > scaIP.txt
-
-#set a bash variable with the IP address
-SCAIP=`cat scaIP.txt`
-
-#*********************************************************
-# Important: you need to update inventory.ini with the IP 
-# address of the VM
-# BEFORE running this next step
-#
-ansible-playbook -i ./inventory.ini  sca.yml
+./scadeploy.sh
 ```
+
 
 to remove, do
 
@@ -42,7 +20,7 @@ terraform destroy
 to ssh to your VM, do
 
 ```bash
-ssh -i pkey.out azureuser@$SCAIP
+ssh -i pkey.out azureuser@`cat scaIP.txt`
 ```
 
 you can generate a supportconfig file on your SUSE virtual machines by doing
