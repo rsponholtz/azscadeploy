@@ -10,4 +10,6 @@ az vm show -d -g scaResourceGroup -n scaVM --query publicIps -o tsv > scaIP.txt
 SCAIP=`cat scaIP.txt`
 SEDCMD="s/20.83.123.73/$SCAIP/g"
 cat inventory.ini.sample | sed $SEDCMD > inventory.ini
+#before running the ansible playbook, wait just a bit
 ansible-playbook -i ./inventory.ini sca.yml
+echo $?
