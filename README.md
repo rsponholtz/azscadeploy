@@ -1,7 +1,8 @@
 # azscadeploy
-##Deploy an sca in azure with terraform and ansible
 
-to deploy SCA, do the following.  It is convenient to use cloudshell bash for this:
+## Deploy an sca in azure with Terraform and Ansible
+
+To deploy SCA, do the following.  It is convenient to use cloudshell bash for this:
 
 ```bash
 git clone https://github.com/rsponholtz/azscadeploy.Git
@@ -24,7 +25,11 @@ az vm show -d -g scaResourceGroup -n scaVM --query publicIps -o tsv > scaIP.txt
 #set a bash variable with the IP address
 SCAIP=`cat scaIP.txt`
 
-#update inventory.ini with the IP address of the VM
+#*********************************************************
+# Important: you need to update inventory.ini with the IP 
+# address of the VM
+# BEFORE running this next step
+#
 ansible-playbook -i ./inventory.ini  sca.yml
 ```
 
@@ -84,9 +89,12 @@ fi
 
 and comment out all of these lines with the ***#*** character.
 
-you can extract supportconfig files into the /var/log/archives directory, and then use the pat program to test a pattern test like this:
+For testing of pattern rules, you need to move one or more supportconfig archive files onto your SCA appliance, and then extract them into the /var/log/archives directory.
+
+Then use the pat program to test a pattern test like this - I'm using the cli-ban.pl pattern in this example:
 
 ```bash
+cp /usr/lib/sca/patterns/local/cli-ban.pl .
 ./pat cli-ban.pl
 ```
 
@@ -123,6 +131,8 @@ When a pattern is complete you can put it in the library of patterns on your own
 ## Pattern samples
 
 Let's look at the pattern checks you can create.  It is possible to write these patterns in perl, bash or python with the built-in libraries, and you could use anything else as long as you can parse the supportconfig files and create the correct output.  
+
+While there is not any documentation on the support libraries for SCA analysis, you can use [the source code](https://github.com/openSUSE/sca-patterns-base.git.
 
 This is a pattern written in perl.  It checks whether there are any cli-ban or cli-prefer location constraints in the cluster configuration.
 

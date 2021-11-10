@@ -112,7 +112,7 @@
           - ThirdPartyNotice.txt
           - NOTICE.txt
         extra_opts: [--strip-components=1]
-    
+
     - git:
         repo: "https://github.com/rsponholtz/azsapsca.git"
         dest: "/root/azsapsca"
